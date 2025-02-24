@@ -30,7 +30,7 @@ def index():
 def handle_stream_audio(audio_data):
     try:
         # Process the incoming audio stream
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as temp_audio:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_audio:
             audio_bytes = base64.b64decode(audio_data)
             temp_audio.write(audio_bytes)
             temp_audio.flush()
@@ -39,7 +39,8 @@ def handle_stream_audio(audio_data):
             with open(temp_audio.name, 'rb') as audio:
                 transcript = openai.audio.transcriptions.create(
                     model="whisper-1",
-                    file=audio
+                    file=audio,
+                    response_format="text"
                 )
 
             # Get response from GPT-4o
@@ -47,7 +48,7 @@ def handle_stream_audio(audio_data):
                 model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant providing concise and informative answers."},
-                    {"role": "user", "content": transcript.text}
+                    {"role": "user", "content": transcript}
                 ],
                 max_tokens=150
             )
