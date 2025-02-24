@@ -84,48 +84,30 @@ def process_audio():
 @socketio.on('stream-audio')
 def handle_stream_audio(audio_data):
     try:
-        # Process the incoming audio stream
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as temp_audio:
-            audio_bytes = base64.b64decode(audio_data)
-            temp_audio.write(audio_bytes)
-            temp_audio.flush()
+        with app.app_context():
+            # Process the incoming audio stream
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as temp_audio:
+                audio_bytes = base64.b64decode(audio_data)
+                temp_audio.write(audio_bytes)
+                temp_audio.flush()
 
-            # Transcribe streaming audio
-            with open(temp_audio.name, 'rb') as audio:
-                transcript = openai.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio
-                )
+                # Directly process audio using OpenAI Audio API
+                with open(temp_audio.name, 'rb') as audio:
+                    # Create audio response using OpenAI Audio API
+                    speech_response = openai.audio.speech.create(
+                        model="tts-1",
+                        voice="shimmer",
+                        input=audio.read()  # Direct audio processing
+                    )
 
-        # Remove temporary file
-        os.unlink(temp_audio.name)
+            # Remove temporary file
+            os.unlink(temp_audio.name)
 
-        # Get real-time response from GPT-4o
-        response = openai.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant in a real-time voice chat."},
-                {"role": "user", "content": transcript.text}
-            ],
-            max_tokens=50  # Shorter responses for real-time chat
-        )
-
-        answer = response.choices[0].message.content
-
-        # Convert answer to speech
-        speech_response = openai.audio.speech.create(
-            model="tts-1",
-            voice="shimmer",
-            input=answer
-        )
-
-        # Send the response back through WebSocket
-        audio_base64 = base64.b64encode(speech_response.content).decode('utf-8')
-        emit('stream-response', {
-            'transcript': transcript.text,
-            'response': answer,
-            'audio_base64': audio_base64
-        })
+            # Send the audio response back through WebSocket
+            audio_base64 = base64.b64encode(speech_response.content).decode('utf-8')
+            emit('stream-response', {
+                'audio_base64': audio_base64
+            })
 
     except Exception as e:
         logging.error(f"Error in stream processing: {str(e)}")

@@ -2,10 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const recordButton = document.getElementById('recordButton');
     const recordingStatus = document.getElementById('recordingStatus');
     const timer = document.getElementById('timer');
-    const messagesContainer = document.getElementById('messages');
     const loadingOverlay = document.getElementById('loadingOverlay');
-    const normalMode = document.getElementById('normalMode');
-    const streamMode = document.getElementById('streamMode');
 
     let mediaRecorder;
     let audioChunks = [];
@@ -14,7 +11,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let startTime;
     let audioContext;
     let socket;
-    let isStreamMode = false;
 
     // Initialize Socket.IO
     function initializeSocketIO() {
@@ -32,8 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         socket.on('stream-response', (data) => {
-            addMessage(data.transcript, 'user');
-            addMessage(data.response, 'assistant', data.audio_base64);
+            playAudioResponse(data.audio_base64);
         });
 
         socket.on('stream-error', (data) => {
@@ -46,24 +41,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize audio devices
     async function initializeAudio() {
         try {
-            // Initialize audio context for output
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // Initialize audio context on user interaction
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                await audioContext.resume();
+            }
 
             // Request microphone access
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
 
             mediaRecorder.ondataavailable = (event) => {
-                audioChunks.push(event.data);
-                if (isStreamMode && event.data.size > 0) {
+                if (event.data.size > 0) {
                     processStreamChunk(event.data);
-                }
-            };
-
-            mediaRecorder.onstop = async () => {
-                if (!isStreamMode) {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                    await processAudio(audioBlob);
                 }
             };
 
@@ -109,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function startRecording() {
         try {
             audioChunks = [];
-            mediaRecorder.start(isStreamMode ? 1000 : undefined);
+            mediaRecorder.start(1000); // Stream mode: chunk every second
             recording = true;
             startTime = Date.now();
             recordButton.innerHTML = '<i class="fas fa-stop"></i> 録音停止';
@@ -132,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
             recording = false;
             recordButton.innerHTML = '<i class="fas fa-microphone"></i> 録音開始';
             recordButton.classList.remove('btn-danger');
-            recordingStatus.textContent = '処理中...';
+            recordingStatus.textContent = '録音の準備ができました';
             recordingStatus.classList.remove('recording');
             clearInterval(timerInterval);
             timer.style.display = 'none';
@@ -140,37 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error stopping recording:', error);
             recordingStatus.textContent = 'エラー: 録音を停止できませんでした';
             recordingStatus.classList.add('text-danger');
-        }
-    }
-
-    // Process audio and get response
-    async function processAudio(audioBlob) {
-        loadingOverlay.style.display = 'flex';
-
-        try {
-            const formData = new FormData();
-            formData.append('audio', audioBlob);
-
-            const response = await fetch('/process-audio', {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                addMessage(data.transcript, 'user');
-                addMessage(data.response, 'assistant', data.audio_base64);
-                recordingStatus.textContent = '録音の準備ができました';
-            } else {
-                throw new Error(data.error || 'Failed to process audio');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            recordingStatus.textContent = 'エラー: ' + error.message;
-            recordingStatus.classList.add('text-danger');
-        } finally {
-            loadingOverlay.style.display = 'none';
         }
     }
 
@@ -203,54 +162,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Add message to conversation
-    function addMessage(text, role, audioData = null) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${role}-message`;
-
-        let playButtonHtml = '';
-        if (audioData) {
-            playButtonHtml = `
-                <button class="btn btn-sm btn-primary play-response" onclick="playAudioResponse('${audioData}')">
-                    <i class="fas fa-play"></i> 回答を再生
-                </button>
-            `;
-        }
-
-        messageDiv.innerHTML = `
-            <div class="message-content">
-                <p class="mb-0">${text}</p>
-                ${playButtonHtml}
-            </div>
-        `;
-        messagesContainer.appendChild(messageDiv);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
-
-    // Mode change handler
-    function handleModeChange() {
-        isStreamMode = streamMode.checked;
-        if (recording) {
-            stopRecording();
-        }
-        recordingStatus.textContent = `録音の準備ができました (${isStreamMode ? 'チャット' : '通常'}モード)`;
-    }
-
-    // Make functions available globally
-    window.playAudioResponse = playAudioResponse;
-
     // Set up event listeners
     recordButton.addEventListener('click', () => {
-        if (!recording) {
-            startRecording();
+        // Initialize audio on first click if not already initialized
+        if (!audioContext) {
+            initializeAudio().then(() => {
+                if (!recording) {
+                    startRecording();
+                }
+            });
         } else {
-            stopRecording();
+            if (!recording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
         }
     });
-
-    normalMode.addEventListener('change', handleModeChange);
-    streamMode.addEventListener('change', handleModeChange);
-
-    // Initialize audio
-    initializeAudio();
 });

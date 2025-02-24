@@ -20,37 +20,16 @@
 
                 <div class="card mb-4">
                     <div class="card-body text-center">
-                        <div class="btn-group mb-4" role="group">
-                            <input type="radio" class="btn-check" name="mode" id="normalMode" checked>
-                            <label class="btn btn-outline-primary" for="normalMode">
-                                <i class="fas fa-microphone"></i> 通常モード
-                            </label>
-                            <input type="radio" class="btn-check" name="mode" id="streamMode">
-                            <label class="btn btn-outline-primary" for="streamMode">
-                                <i class="fas fa-comments"></i> チャットモード
-                            </label>
-                        </div>
                         <div id="controls" class="mb-4">
                             <button id="recordButton" class="btn btn-lg btn-primary" disabled>
                                 <i class="fas fa-microphone"></i>
-                                Start Recording
+                                録音開始
                             </button>
                         </div>
                         <div id="recordingStatus" class="text-muted mb-3">
-                            Requesting microphone access...
+                            マイクにアクセスしています...
                         </div>
                         <div id="timer" class="h4 mb-3" style="display: none;">00:00</div>
-                    </div>
-                </div>
-
-                <div id="conversation" class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">Conversation History</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="messages" class="messages-container">
-                            <!-- Messages will be inserted here -->
-                        </div>
                     </div>
                 </div>
             </div>
