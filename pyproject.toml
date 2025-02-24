@@ -14,4 +14,5 @@ dependencies = [
     "eventlet>=0.39.0",
     "numpy>=2.2.3",
     "pandas>=2.2.3",
+    "trafilatura>=2.0.0",
 ]
