@@ -10,10 +10,22 @@ document.addEventListener('DOMContentLoaded', () => {
     let recording = false;
     let timerInterval;
     let startTime;
+    let audioContext;
 
-    // Initialize audio recording
-    async function initializeRecording() {
+    // Initialize audio devices
+    async function initializeAudio() {
         try {
+            // Check microphone permission status
+            const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
+
+            if (permissionStatus.state === 'denied') {
+                throw new Error('マイクの使用が拒否されています。ブラウザの設定でマイクへのアクセスを許可してください。');
+            }
+
+            // Initialize audio context for output
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Request microphone access
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
 
@@ -25,9 +37,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                 await processAudio(audioBlob);
             };
+
+            // Test audio output
+            const oscillator = audioContext.createOscillator();
+            oscillator.connect(audioContext.destination);
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.1);
+
+            recordButton.disabled = false;
+            recordingStatus.textContent = '録音の準備ができました';
+            recordButton.innerHTML = '<i class="fas fa-microphone"></i> 録音開始';
         } catch (error) {
-            console.error('Error accessing microphone:', error);
-            recordingStatus.textContent = 'Error: Could not access microphone';
+            console.error('Error initializing audio:', error);
+            recordingStatus.textContent = error.message || 'オーディオデバイスへのアクセスが許可されていません';
+            recordingStatus.classList.add('text-danger');
         }
     }
 
@@ -45,9 +68,9 @@ document.addEventListener('DOMContentLoaded', () => {
         mediaRecorder.start();
         recording = true;
         startTime = Date.now();
-        recordButton.innerHTML = '<i class="fas fa-stop"></i> Stop Recording';
+        recordButton.innerHTML = '<i class="fas fa-stop"></i> 録音停止';
         recordButton.classList.add('btn-danger');
-        recordingStatus.textContent = 'Recording...';
+        recordingStatus.textContent = '録音中...';
         recordingStatus.classList.add('recording');
         timer.style.display = 'block';
         timerInterval = setInterval(updateTimer, 1000);
@@ -57,9 +80,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function stopRecording() {
         mediaRecorder.stop();
         recording = false;
-        recordButton.innerHTML = '<i class="fas fa-microphone"></i> Start Recording';
+        recordButton.innerHTML = '<i class="fas fa-microphone"></i> 録音開始';
         recordButton.classList.remove('btn-danger');
-        recordingStatus.textContent = 'Processing...';
+        recordingStatus.textContent = '処理中...';
         recordingStatus.classList.remove('recording');
         clearInterval(timerInterval);
         timer.style.display = 'none';
@@ -68,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Process audio and get response
     async function processAudio(audioBlob) {
         loadingOverlay.style.display = 'flex';
-        
+
         try {
             const formData = new FormData();
             formData.append('audio', audioBlob);
@@ -79,39 +102,77 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             const data = await response.json();
-            
+
             if (response.ok) {
                 // Add messages to conversation
                 addMessage(data.transcript, 'user');
-                addMessage(data.response, 'assistant');
-                recordingStatus.textContent = 'Ready to record';
+                addMessage(data.response, 'assistant', data.audio_base64);
+                recordingStatus.textContent = '録音の準備ができました';
             } else {
                 throw new Error(data.error || 'Failed to process audio');
             }
         } catch (error) {
             console.error('Error:', error);
-            recordingStatus.textContent = 'Error: ' + error.message;
+            recordingStatus.textContent = 'エラー: ' + error.message;
+            recordingStatus.classList.add('text-danger');
         } finally {
             loadingOverlay.style.display = 'none';
         }
     }
 
+    // Play audio response
+    async function playAudioResponse(base64Data) {
+        try {
+            // Resume audio context if it was suspended
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
+            const audioData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+            const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+
+            audio.onerror = (error) => {
+                console.error('Audio playback error:', error);
+                alert('音声の再生中にエラーが発生しました。');
+            };
+
+            await audio.play();
+        } catch (error) {
+            console.error('Error playing audio:', error);
+            alert('音声の再生中にエラーが発生しました。');
+        }
+    }
+
     // Add message to conversation
-    function addMessage(text, role) {
+    function addMessage(text, role, audioData = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}-message`;
+
+        let playButtonHtml = '';
+        if (audioData) {
+            playButtonHtml = `
+                <button class="btn btn-sm btn-primary play-response" onclick="playAudioResponse('${audioData}')">
+                    <i class="fas fa-play"></i> 回答を再生
+                </button>
+            `;
+        }
+
         messageDiv.innerHTML = `
             <div class="message-content">
                 <p class="mb-0">${text}</p>
+                ${playButtonHtml}
             </div>
         `;
         messagesContainer.appendChild(messageDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
-    // Initialize and set up event listeners
-    initializeRecording();
+    // Make functions available globally
+    window.playAudioResponse = playAudioResponse;
 
+    // Set up event listeners
     recordButton.addEventListener('click', () => {
         if (!recording) {
             startRecording();
@@ -119,4 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
             stopRecording();
         }
     });
+
+    // Initialize audio on page load
+    initializeAudio();
 });

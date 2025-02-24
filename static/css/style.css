@@ -32,6 +32,17 @@
     margin-right: 2rem;
 }
 
+.message-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.play-response {
+    align-self: flex-start;
+    margin-top: 0.5rem;
+}
+
 #timer {
     font-family: monospace;
     font-size: 2rem;

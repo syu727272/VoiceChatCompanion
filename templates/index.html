@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice Q&A with GPT-4o</title>
     <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/font-awesome@6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
     <link href="/static/css/style.css" rel="stylesheet">
 </head>
 <body>
@@ -20,12 +20,14 @@
                 <div class="card mb-4">
                     <div class="card-body text-center">
                         <div id="controls" class="mb-4">
-                            <button id="recordButton" class="btn btn-lg btn-primary">
+                            <button id="recordButton" class="btn btn-lg btn-primary" disabled>
                                 <i class="fas fa-microphone"></i>
                                 Start Recording
                             </button>
                         </div>
-                        <div id="recordingStatus" class="text-muted mb-3"></div>
+                        <div id="recordingStatus" class="text-muted mb-3">
+                            Requesting microphone access...
+                        </div>
                         <div id="timer" class="h4 mb-3" style="display: none;">00:00</div>
                     </div>
                 </div>

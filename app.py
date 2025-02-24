@@ -1,8 +1,9 @@
 import os
 import logging
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from openai import OpenAI
 import tempfile
+import io
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -29,7 +30,7 @@ def process_audio():
         # Save audio file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as temp_audio:
             audio_file.save(temp_audio.name)
-            
+
             # Transcribe audio
             with open(temp_audio.name, 'rb') as audio:
                 transcript = openai.audio.transcriptions.create(
@@ -52,9 +53,21 @@ def process_audio():
 
         answer = response.choices[0].message.content
 
+        # Convert answer to speech
+        speech_response = openai.audio.speech.create(
+            model="tts-1",
+            voice="shimmer",
+            input=answer
+        )
+
+        # Save speech to a temporary file
+        audio_data = io.BytesIO(speech_response.content)
+        audio_data.seek(0)
+
         return jsonify({
             'transcript': transcript.text,
-            'response': answer
+            'response': answer,
+            'audio_base64': speech_response.content.decode('latin1')  # Send binary data as base64
         })
 
     except Exception as e:
