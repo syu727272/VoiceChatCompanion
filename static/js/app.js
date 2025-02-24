@@ -128,7 +128,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 await audioContext.resume();
             }
 
-            const audioData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+            // Convert base64 to binary data
+            const binaryData = atob(base64Data);
+            const audioData = new Uint8Array(binaryData.length);
+            for (let i = 0; i < binaryData.length; i++) {
+                audioData[i] = binaryData.charCodeAt(i);
+            }
+
+            // Create audio blob and play
             const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
             const audioUrl = URL.createObjectURL(audioBlob);
             const audio = new Audio(audioUrl);

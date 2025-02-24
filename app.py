@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, jsonify, send_file
 from openai import OpenAI
 import tempfile
 import io
+import base64
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -60,14 +61,13 @@ def process_audio():
             input=answer
         )
 
-        # Save speech to a temporary file
-        audio_data = io.BytesIO(speech_response.content)
-        audio_data.seek(0)
+        # Convert binary audio data to base64
+        audio_base64 = base64.b64encode(speech_response.content).decode('utf-8')
 
         return jsonify({
             'transcript': transcript.text,
             'response': answer,
-            'audio_base64': speech_response.content.decode('latin1')  # Send binary data as base64
+            'audio_base64': audio_base64
         })
 
     except Exception as e:
