@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const timer = document.getElementById('timer');
     const messagesContainer = document.getElementById('messages');
     const loadingOverlay = document.getElementById('loadingOverlay');
+    const normalMode = document.getElementById('normalMode');
+    const streamMode = document.getElementById('streamMode');
 
     let mediaRecorder;
     let audioChunks = [];
@@ -11,17 +13,39 @@ document.addEventListener('DOMContentLoaded', () => {
     let timerInterval;
     let startTime;
     let audioContext;
+    let socket;
+    let isStreamMode = false;
+
+    // Initialize Socket.IO
+    function initializeSocketIO() {
+        socket = io();
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            recordingStatus.textContent = '録音の準備ができました';
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Socket connection error:', error);
+            recordingStatus.textContent = 'サーバー接続エラー';
+            recordingStatus.classList.add('text-danger');
+        });
+
+        socket.on('stream-response', (data) => {
+            addMessage(data.transcript, 'user');
+            addMessage(data.response, 'assistant', data.audio_base64);
+        });
+
+        socket.on('stream-error', (data) => {
+            console.error('Stream error:', data.error);
+            recordingStatus.textContent = 'エラー: ' + data.error;
+            recordingStatus.classList.add('text-danger');
+        });
+    }
 
     // Initialize audio devices
     async function initializeAudio() {
         try {
-            // Check microphone permission status
-            const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
-
-            if (permissionStatus.state === 'denied') {
-                throw new Error('マイクの使用が拒否されています。ブラウザの設定でマイクへのアクセスを許可してください。');
-            }
-
             // Initialize audio context for output
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -31,25 +55,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
             mediaRecorder.ondataavailable = (event) => {
                 audioChunks.push(event.data);
+                if (isStreamMode && event.data.size > 0) {
+                    processStreamChunk(event.data);
+                }
             };
 
             mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                await processAudio(audioBlob);
+                if (!isStreamMode) {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    await processAudio(audioBlob);
+                }
             };
-
-            // Test audio output
-            const oscillator = audioContext.createOscillator();
-            oscillator.connect(audioContext.destination);
-            oscillator.start();
-            oscillator.stop(audioContext.currentTime + 0.1);
 
             recordButton.disabled = false;
             recordingStatus.textContent = '録音の準備ができました';
             recordButton.innerHTML = '<i class="fas fa-microphone"></i> 録音開始';
+
+            // Initialize Socket.IO after audio is ready
+            initializeSocketIO();
+
         } catch (error) {
             console.error('Error initializing audio:', error);
-            recordingStatus.textContent = error.message || 'オーディオデバイスへのアクセスが許可されていません';
+            recordingStatus.innerHTML = `エラー: ${error.message || 'オーディオデバイスの初期化に失敗しました'}`;
+            recordingStatus.classList.add('text-danger');
+        }
+    }
+
+    // Process streaming audio chunk
+    async function processStreamChunk(chunk) {
+        try {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64Audio = reader.result.split(',')[1];
+                socket.emit('stream-audio', base64Audio);
+            };
+            reader.readAsDataURL(chunk);
+        } catch (error) {
+            console.error('Error processing stream chunk:', error);
+            recordingStatus.textContent = 'エラー: 音声データの処理に失敗しました';
             recordingStatus.classList.add('text-danger');
         }
     }
@@ -64,28 +107,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Start recording
     function startRecording() {
-        audioChunks = [];
-        mediaRecorder.start();
-        recording = true;
-        startTime = Date.now();
-        recordButton.innerHTML = '<i class="fas fa-stop"></i> 録音停止';
-        recordButton.classList.add('btn-danger');
-        recordingStatus.textContent = '録音中...';
-        recordingStatus.classList.add('recording');
-        timer.style.display = 'block';
-        timerInterval = setInterval(updateTimer, 1000);
+        try {
+            audioChunks = [];
+            mediaRecorder.start(isStreamMode ? 1000 : undefined);
+            recording = true;
+            startTime = Date.now();
+            recordButton.innerHTML = '<i class="fas fa-stop"></i> 録音停止';
+            recordButton.classList.add('btn-danger');
+            recordingStatus.textContent = '録音中...';
+            recordingStatus.classList.add('recording');
+            timer.style.display = 'block';
+            timerInterval = setInterval(updateTimer, 1000);
+        } catch (error) {
+            console.error('Error starting recording:', error);
+            recordingStatus.textContent = 'エラー: 録音を開始できませんでした';
+            recordingStatus.classList.add('text-danger');
+        }
     }
 
     // Stop recording
     function stopRecording() {
-        mediaRecorder.stop();
-        recording = false;
-        recordButton.innerHTML = '<i class="fas fa-microphone"></i> 録音開始';
-        recordButton.classList.remove('btn-danger');
-        recordingStatus.textContent = '処理中...';
-        recordingStatus.classList.remove('recording');
-        clearInterval(timerInterval);
-        timer.style.display = 'none';
+        try {
+            mediaRecorder.stop();
+            recording = false;
+            recordButton.innerHTML = '<i class="fas fa-microphone"></i> 録音開始';
+            recordButton.classList.remove('btn-danger');
+            recordingStatus.textContent = '処理中...';
+            recordingStatus.classList.remove('recording');
+            clearInterval(timerInterval);
+            timer.style.display = 'none';
+        } catch (error) {
+            console.error('Error stopping recording:', error);
+            recordingStatus.textContent = 'エラー: 録音を停止できませんでした';
+            recordingStatus.classList.add('text-danger');
+        }
     }
 
     // Process audio and get response
@@ -104,7 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             if (response.ok) {
-                // Add messages to conversation
                 addMessage(data.transcript, 'user');
                 addMessage(data.response, 'assistant', data.audio_base64);
                 recordingStatus.textContent = '録音の準備ができました';
@@ -123,19 +177,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Play audio response
     async function playAudioResponse(base64Data) {
         try {
-            // Resume audio context if it was suspended
             if (audioContext.state === 'suspended') {
                 await audioContext.resume();
             }
 
-            // Convert base64 to binary data
             const binaryData = atob(base64Data);
             const audioData = new Uint8Array(binaryData.length);
             for (let i = 0; i < binaryData.length; i++) {
                 audioData[i] = binaryData.charCodeAt(i);
             }
 
-            // Create audio blob and play
             const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
             const audioUrl = URL.createObjectURL(audioBlob);
             const audio = new Audio(audioUrl);
@@ -176,6 +227,15 @@ document.addEventListener('DOMContentLoaded', () => {
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
+    // Mode change handler
+    function handleModeChange() {
+        isStreamMode = streamMode.checked;
+        if (recording) {
+            stopRecording();
+        }
+        recordingStatus.textContent = `録音の準備ができました (${isStreamMode ? 'チャット' : '通常'}モード)`;
+    }
+
     // Make functions available globally
     window.playAudioResponse = playAudioResponse;
 
@@ -188,6 +248,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Initialize audio on page load
+    normalMode.addEventListener('change', handleModeChange);
+    streamMode.addEventListener('change', handleModeChange);
+
+    // Initialize audio
     initializeAudio();
 });

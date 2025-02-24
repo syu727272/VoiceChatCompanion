@@ -7,6 +7,7 @@
     <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
     <link href="/static/css/style.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
 <body>
     <div class="container py-5">
@@ -19,6 +20,16 @@
 
                 <div class="card mb-4">
                     <div class="card-body text-center">
+                        <div class="btn-group mb-4" role="group">
+                            <input type="radio" class="btn-check" name="mode" id="normalMode" checked>
+                            <label class="btn btn-outline-primary" for="normalMode">
+                                <i class="fas fa-microphone"></i> 通常モード
+                            </label>
+                            <input type="radio" class="btn-check" name="mode" id="streamMode">
+                            <label class="btn btn-outline-primary" for="streamMode">
+                                <i class="fas fa-comments"></i> チャットモード
+                            </label>
+                        </div>
                         <div id="controls" class="mb-4">
                             <button id="recordButton" class="btn btn-lg btn-primary" disabled>
                                 <i class="fas fa-microphone"></i>
