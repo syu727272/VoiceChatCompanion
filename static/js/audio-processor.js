@@ -11,14 +11,16 @@ class AudioProcessor extends AudioWorkletProcessor {
         const input = inputs[0];
         const output = outputs[0];
 
-        // Simple audio processing - echo effect
+        // Real-time audio processing
         for (let channel = 0; channel < input.length; channel++) {
             const inputChannel = input[channel];
             const outputChannel = output[channel];
 
             for (let i = 0; i < inputChannel.length; i++) {
-                // Add delay and feedback
-                outputChannel[i] = inputChannel[i] + 0.5 * this.buffer[this.bufferIndex];
+                // Direct pass-through with optional effects
+                outputChannel[i] = inputChannel[i];
+
+                // Store in buffer for future processing
                 this.buffer[this.bufferIndex] = inputChannel[i];
                 this.bufferIndex = (this.bufferIndex + 1) % this.bufferSize;
             }

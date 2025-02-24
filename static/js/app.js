@@ -12,33 +12,42 @@ document.addEventListener('DOMContentLoaded', () => {
     let timerInterval;
     let startTime;
 
+    // Enable button initially to allow user interaction
+    recordButton.disabled = false;
+    recordButton.innerHTML = '<i class="fas fa-microphone"></i> マイクを有効化';
+
     async function initializeAudio() {
         try {
-            // Initialize AudioContext on user interaction
+            // Create AudioContext on user interaction
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             await audioContext.resume();
+
+            // Request microphone access
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            sourceNode = audioContext.createMediaStreamSource(mediaStream);
 
             // Load audio worklet
             await audioContext.audioWorklet.addModule('/static/js/audio-processor.js');
 
-            // Get microphone access
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            sourceNode = audioContext.createMediaStreamSource(mediaStream);
-
             // Create audio processor node
-            processorNode = new AudioWorkletNode(audioContext, 'audio-processor');
+            processorNode = new AudioWorkletNode(audioContext, 'audio-processor', {
+                numberOfInputs: 1,
+                numberOfOutputs: 1,
+                channelCount: 1
+            });
 
-            // Connect nodes but don't output yet
+            // Connect nodes
             sourceNode.connect(processorNode);
 
-            recordButton.disabled = false;
             recordingStatus.textContent = '録音の準備ができました';
             recordButton.innerHTML = '<i class="fas fa-microphone"></i> 録音開始';
 
+            return true;
         } catch (error) {
             console.error('Error initializing audio:', error);
-            recordingStatus.innerHTML = `エラー: ${error.message || 'オーディオデバイスの初期化に失敗しました'}`;
+            recordingStatus.innerHTML = `エラー: ${error.message || 'マイクへのアクセスが許可されていません'}`;
             recordingStatus.classList.add('text-danger');
+            return false;
         }
     }
 
@@ -88,47 +97,19 @@ document.addEventListener('DOMContentLoaded', () => {
         timer.textContent = `${minutes}:${seconds}`;
     }
 
-    // Initialize Socket.IO
-    function initializeSocketIO() {
-        socket = io();
-
-        socket.on('connect', () => {
-            console.log('Connected to server');
-            recordingStatus.textContent = '録音の準備ができました';
-        });
-
-        socket.on('connect_error', (error) => {
-            console.error('Socket connection error:', error);
-            recordingStatus.textContent = 'サーバー接続エラー';
-            recordingStatus.classList.add('text-danger');
-        });
-
-        socket.on('stream-response', (data) => {
-            //This function is no longer needed.
-        });
-
-        socket.on('stream-error', (data) => {
-            console.error('Stream error:', data.error);
-            recordingStatus.textContent = 'エラー: ' + data.error;
-            recordingStatus.classList.add('text-danger');
-        });
-    }
-
-
-    recordButton.addEventListener('click', () => {
+    // Set up event listeners
+    recordButton.addEventListener('click', async () => {
         if (!audioContext) {
-            initializeAudio().then(() => {
-                if (!recording) {
-                    startRecording();
-                    initializeSocketIO(); // Initialize Socket.IO after audio is ready
-                }
-            });
-        } else {
-            if (!recording) {
-                startRecording();
-            } else {
-                stopRecording();
+            // First click: Initialize audio
+            const initialized = await initializeAudio();
+            if (!initialized) {
+                recordButton.innerHTML = '<i class="fas fa-microphone"></i> マイクを有効化';
+                return;
             }
+        } else if (!recording) {
+            startRecording();
+        } else {
+            stopRecording();
         }
     });
 });
