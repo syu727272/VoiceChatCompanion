@@ -33,11 +33,15 @@ document.addEventListener('DOMContentLoaded', () => {
             processorNode = new AudioWorkletNode(audioContext, 'audio-processor', {
                 numberOfInputs: 1,
                 numberOfOutputs: 1,
-                channelCount: 1
+                channelCount: 1,
+                processorOptions: {
+                    bufferSize: 2048
+                }
             });
 
-            // Connect nodes
+            // Connect nodes but don't connect to destination yet
             sourceNode.connect(processorNode);
+            // processorNode will be connected to destination when recording starts
 
             recordingStatus.textContent = '録音の準備ができました';
             recordButton.innerHTML = '<i class="fas fa-microphone"></i> 録音開始';
