@@ -4,47 +4,61 @@ document.addEventListener('DOMContentLoaded', () => {
     const timer = document.getElementById('timer');
     const loadingOverlay = document.getElementById('loadingOverlay');
 
-    let audioContext;
-    let mediaStream;
-    let sourceNode;
-    let processorNode;
+    let mediaRecorder;
+    let audioChunks = [];
     let recording = false;
     let timerInterval;
     let startTime;
+    let socket;
 
     // Enable button initially to allow user interaction
     recordButton.disabled = false;
     recordButton.innerHTML = '<i class="fas fa-microphone"></i> マイクを有効化';
 
+    // Initialize Socket.IO
+    function initializeSocketIO() {
+        socket = io();
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            recordingStatus.textContent = '録音の準備ができました';
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Socket connection error:', error);
+            recordingStatus.textContent = 'サーバー接続エラー';
+            recordingStatus.classList.add('text-danger');
+        });
+
+        socket.on('stream-response', (data) => {
+            playAudioResponse(data.audio_base64);
+        });
+
+        socket.on('stream-error', (data) => {
+            console.error('Stream error:', data.error);
+            recordingStatus.textContent = 'エラー: ' + data.error;
+            recordingStatus.classList.add('text-danger');
+        });
+    }
+
+    // Initialize audio devices
     async function initializeAudio() {
         try {
-            // Create AudioContext on user interaction
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            await audioContext.resume();
-
             // Request microphone access
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            sourceNode = audioContext.createMediaStreamSource(mediaStream);
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
 
-            // Load audio worklet
-            await audioContext.audioWorklet.addModule('/static/js/audio-processor.js');
-
-            // Create audio processor node
-            processorNode = new AudioWorkletNode(audioContext, 'audio-processor', {
-                numberOfInputs: 1,
-                numberOfOutputs: 1,
-                channelCount: 1,
-                processorOptions: {
-                    bufferSize: 2048
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    processStreamChunk(event.data);
                 }
-            });
-
-            // Connect nodes but don't connect to destination yet
-            sourceNode.connect(processorNode);
-            // processorNode will be connected to destination when recording starts
+            };
 
             recordingStatus.textContent = '録音の準備ができました';
             recordButton.innerHTML = '<i class="fas fa-microphone"></i> 録音開始';
+
+            // Initialize Socket.IO after audio is ready
+            initializeSocketIO();
 
             return true;
         } catch (error) {
@@ -55,11 +69,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Process streaming audio chunk
+    async function processStreamChunk(chunk) {
+        try {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64Audio = reader.result.split(',')[1];
+                socket.emit('stream-audio', base64Audio);
+            };
+            reader.readAsDataURL(chunk);
+        } catch (error) {
+            console.error('Error processing stream chunk:', error);
+            recordingStatus.textContent = 'エラー: 音声データの処理に失敗しました';
+            recordingStatus.classList.add('text-danger');
+        }
+    }
+
+    // Start recording
     function startRecording() {
         try {
-            // Connect to output for real-time processing
-            processorNode.connect(audioContext.destination);
-
+            audioChunks = [];
+            mediaRecorder.start(1000); // Stream mode: chunk every second
             recording = true;
             startTime = Date.now();
             recordButton.innerHTML = '<i class="fas fa-stop"></i> 録音停止';
@@ -75,11 +105,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Stop recording
     function stopRecording() {
         try {
-            // Disconnect from output
-            processorNode.disconnect(audioContext.destination);
-
+            mediaRecorder.stop();
             recording = false;
             recordButton.innerHTML = '<i class="fas fa-microphone"></i> 録音開始';
             recordButton.classList.remove('btn-danger');
@@ -94,6 +123,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Play audio response
+    async function playAudioResponse(base64Data) {
+        try {
+            const binaryData = atob(base64Data);
+            const audioData = new Uint8Array(binaryData.length);
+            for (let i = 0; i < binaryData.length; i++) {
+                audioData[i] = binaryData.charCodeAt(i);
+            }
+
+            const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+
+            audio.onerror = (error) => {
+                console.error('Audio playback error:', error);
+                alert('音声の再生中にエラーが発生しました。');
+            };
+
+            await audio.play();
+        } catch (error) {
+            console.error('Error playing audio:', error);
+            alert('音声の再生中にエラーが発生しました。');
+        }
+    }
+
     function updateTimer() {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
@@ -103,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Set up event listeners
     recordButton.addEventListener('click', async () => {
-        if (!audioContext) {
+        if (!mediaRecorder) {
             // First click: Initialize audio
             const initialized = await initializeAudio();
             if (!initialized) {
